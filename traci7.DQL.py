@@ -128,7 +128,8 @@ def get_state():
         os.makedirs("snapshots")
     
     unique_id = str(uuid.uuid4())
-    filename = rf"C:\Users\minhnhat21012005\SUMO-test\snapshots\state_snapshot_{unique_id}.png"
+    
+    filename = rf"D:\UIT\Subjects\AI\DOAN\SUMO-test\snapshots\state_snapshot_{unique_id}.png"
 
     
     print(f"Waiting for file {filename} to be created...")
