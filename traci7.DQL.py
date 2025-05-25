@@ -8,7 +8,17 @@ import matplotlib.pyplot as plt  # Visualization
 # Step 1.1: (Additional) Imports for Deep Q-Learning
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+from keras import layers
+
+from collections import deque
+import random
+
+REPLAY_MEMORY_SIZE = 2000
+MIN_REPLAY_SIZE = 100
+BATCH_SIZE = 32
+
+replay_buffer = deque(maxlen=REPLAY_MEMORY_SIZE)
+
 
 # Step 2: Establish path to SUMO (SUMO_HOME)
 if 'SUMO_HOME' in os.environ:
@@ -44,7 +54,7 @@ current_phase = 0
 previous_total_delay = 0 
 
 # ---- Reinforcement Learning Hyperparameters ----
-TOTAL_STEPS = 3600   # The total number of simulation steps for continuous (online) training.
+TOTAL_STEPS = 1000   # The total number of simulation steps for continuous (online) training.
 
 ALPHA = 0.00001            # Learning rate (α) between[0, 1]    #If α = 1, you fully replace the old Q-value with the newly computed estimate.
                                                             #If α = 0, you ignore the new estimate and never update the Q-value.
@@ -88,7 +98,7 @@ def Deep_Q_network(state_size, action_size):
     
     model.compile(
         loss='mse',
-        optimizer=keras.optimizers.Adam(learning_rate=0.001)
+        optimizer=keras.optimizers.Adam(learning_rate=0.00001)
     )
     return model
 
@@ -128,8 +138,7 @@ def get_state():
         os.makedirs("snapshots")
     
     unique_id = str(uuid.uuid4())
-    
-    filename = rf"D:\UIT\Subjects\AI\DOAN\SUMO-test\snapshots\state_snapshot_{unique_id}.png"
+    filename = rf"C:\NHP\UIT_CS106\snapshots\state_snapshot_{unique_id}.png"
 
     
     print(f"Waiting for file {filename} to be created...")
@@ -231,21 +240,32 @@ def apply_action(action, tls_id="clusterJ4_J5_J6"): #5. Constraint 5
 
 
 
-def update_Q_table(old_state, action, reward, new_state): #6. Constraint 6
-    """
-    In DQN, we do a single-step gradient update instead of a table update.
-    """
-    # 1) Predict current Q-values from old_state (current state)
-    Q_values_old = dqn_model.predict(old_state, verbose=0)[0]
-    # 2) Predict Q-values for new_state to get max future Q (new state)
-    Q_values_new = dqn_model.predict(new_state, verbose=0)[0]
-    best_future_q = np.max(Q_values_new)
+def train_from_replay():
+    if len(replay_buffer) < MIN_REPLAY_SIZE:
+        return  # chưa đủ dữ liệu để train
 
-    # 3) Incorporate ALPHA to partially update the Q-value
-    Q_values_old[action] = Q_values_old[action] + ALPHA * (reward + GAMMA * best_future_q - Q_values_old[action])
+    minibatch = random.sample(replay_buffer, BATCH_SIZE)
 
-    # 4) Train (fit) the DQN on this single sample
-    dqn_model.fit(old_state, np.array([Q_values_old]), verbose=0)
+    states = np.array([sample[0][0] for sample in minibatch])
+    actions = np.array([sample[1] for sample in minibatch])
+    rewards = np.array([sample[2] for sample in minibatch])
+    next_states = np.array([sample[3][0] for sample in minibatch])
+    dones = np.array([sample[4] for sample in minibatch])
+    
+    # Dự đoán Q hiện tại và Q tương lai
+    q_values = dqn_model.predict(states, verbose=0)
+    next_q_values = dqn_model.predict(next_states, verbose=0)
+
+    targets = q_values.copy()  # tránh sửa trực tiếp q_values gốc
+    for i in range(BATCH_SIZE):
+        if dones[i]:
+            target_q = rewards[i]
+        else:
+            target_q = rewards[i] + GAMMA * np.max(next_q_values[i])
+        targets[i][actions[i]] = target_q
+
+    dqn_model.fit(states, targets, verbose=0)
+
 
 def get_action_from_policy(state): #7. Constraint 7
     """
@@ -271,7 +291,7 @@ def get_current_phase(tls_id): #8.Constraint 8
 step_history = []
 reward_history = []
 queue_history = []
-
+cur_reward_history = []
 cumulative_reward = 0.0
 
 print("\n=== Starting Fully Online Continuous Learning (DQN) ===")
@@ -296,6 +316,8 @@ for step in range(TOTAL_STEPS):
     
     # traci.simulationStep()  # Advance simulation by one step
     
+    done = traci.simulation.getMinExpectedNumber() == 0
+    
     new_snapshot = get_state()
     new_state = decode_and_preprocess(new_snapshot)  
     new_state = np.expand_dims(new_state, axis=0)  # shape: (1, 128, 128, 4)
@@ -303,7 +325,12 @@ for step in range(TOTAL_STEPS):
     reward = get_reward()
     cumulative_reward += reward
     
-    update_Q_table(state, action, reward, new_state)
+    # 1. Lưu trải nghiệm vào replay buffer
+    replay_buffer.append((state, action, reward, new_state, done))
+
+    # 2. Train từ replay buffer nếu đủ dữ liệu
+    train_from_replay()
+
     
     # Print Q-values for the old_state right after update
     updated_q_vals = dqn_model.predict(state, verbose=0)[0]
@@ -313,10 +340,8 @@ for step in range(TOTAL_STEPS):
         updated_q_vals = dqn_model.predict(state, verbose=0)[0]
         print(f"Step {step}, Current_State: {state}, Action: {action}, New_State: {new_state}, Reward: {reward:.2f}, Cumulative Reward: {cumulative_reward:.2f}, Q-values(current_state): {updated_q_vals}")
         step_history.append(step)
-        reward_history.append(cumulative_reward)
-        queue_history.append(sum(new_state[:-1]))  # sum of queue lengths
-
-
+        reward_history.append(reward)
+        cur_reward_history.append(cumulative_reward)
 
 # -------------------------
 # Step 9: Close connection between SUMO and Traci
@@ -334,7 +359,7 @@ dqn_model.summary()
 
 # Plot Cumulative Reward over Simulation Steps
 plt.figure(figsize=(10, 6))
-plt.plot(step_history, reward_history, marker='o', linestyle='-', label="Cumulative Reward")
+plt.plot(step_history, cur_reward_history, marker='o', linestyle='-', label="Cumulative Reward")
 plt.xlabel("Simulation Step")
 plt.ylabel("Cumulative Reward")
 plt.title("RL Training (DQN): Cumulative Reward over Steps")
@@ -344,10 +369,10 @@ plt.show()
 
 # Plot Total Queue Length over Simulation Steps
 plt.figure(figsize=(10, 6))
-plt.plot(step_history, queue_history, marker='o', linestyle='-', label="Total Queue Length")
+plt.plot(step_history, reward_history, marker='o', linestyle='-', label="Reward")
 plt.xlabel("Simulation Step")
-plt.ylabel("Total Queue Length")
-plt.title("RL Training (DQN): Queue Length over Steps")
+plt.ylabel("Total Reward")
+plt.title("RL Training (DQN): Reward over Steps")
 plt.legend()
 plt.grid(True)
 plt.show()
