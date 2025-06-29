@@ -17,24 +17,24 @@ from sumo_rl.agents import pg_agent
 from sumo_rl.agents.pg_agent import ActorCriticAgent
 
 if __name__ == "__main__":
-    start_epoch = 1
-    epochs = 1
-    start_episode = 35
-    episodes = 100
+    start_run = 1
+    runs = 1
+    start_episode = 261
+    episodes = 280
     save_model_path = "experiments/model"
 
     env = SumoEnvironment(
         net_file="sumo_rl/nets/4x4-Lucas/4x4.net.xml",
         route_file="sumo_rl/nets/4x4-Lucas/4x4c1c2c1c2.rou.xml",
-        use_gui=False,
+        use_gui=True,
         num_seconds=8000,
         min_green=5,
         delta_time=5,
     )
 
-    for epoch in range(start_epoch, epochs + 1):
+    for run in range(start_run, runs + 1):
         initial_states = env.reset()
-        if start_epoch == 1 and start_episode == 1:
+        if start_episode == 1:
             agents = {
                 ts: ActorCriticAgent(
                     state_size=len(env.encode(initial_states[ts], ts)),
@@ -43,19 +43,14 @@ if __name__ == "__main__":
                 for ts in env.ts_ids
             }
         else:
-            if start_episode == 1:
-                save_epoch_episode_path = save_model_path + f"/epoch {start_epoch-1}/" + f"/episode {start_episode}"
-            elif start_epoch == 1:
-                save_epoch_episode_path = save_model_path + f"/epoch {start_epoch}/" + f"/episode {start_episode-1}"
-            else:
-                save_epoch_episode_path = save_model_path + f"/epoch {start_epoch-1}/" + f"/episode {start_episode-1}"
+            save_run_episode_path = save_model_path + f"/run {start_run}/" + f"/episode {start_episode-1}"
         
             agents = {
                 ts: ActorCriticAgent(
                     state_size=len(env.encode(initial_states[ts], ts)),
                     action_size=env.action_spaces(ts).n,
-                    actor_path = save_epoch_episode_path + f"/actor_ts{ts}.pth",
-                    critic_path = save_epoch_episode_path + f"/critic_ts{ts}.pth",
+                    actor_path = save_run_episode_path + f"/actor_ts{ts}.pth",
+                    critic_path = save_run_episode_path + f"/critic_ts{ts}.pth",
                 )
                 for ts in env.ts_ids
             }
@@ -82,21 +77,21 @@ if __name__ == "__main__":
                 
                 encoded_states = next_encoded
 
-            this_epoch_path = save_model_path + f"/epoch {epoch}"
-            if not os.path.exists(this_epoch_path):
-                os.makedirs(this_epoch_path)
+            this_run_path = save_model_path + f"/run {run}"
+            if not os.path.exists(this_run_path):
+                os.makedirs(this_run_path)
             
-            this_epoch_episode_path = this_epoch_path + f"/episode {episode}"
-            if not os.path.exists(this_epoch_episode_path):
-                os.makedirs(this_epoch_episode_path)
+            this_run_episode_path = this_run_path + f"/episode {episode}"
+            if not os.path.exists(this_run_episode_path):
+                os.makedirs(this_run_episode_path)
 
             for ts in agents:
                 agents[ts].replay()
                 agents[ts].save_model(
-                    actor_path=this_epoch_episode_path + f"/actor_ts{ts}.pth",
-                    critic_path=this_epoch_episode_path + f"/critic_ts{ts}.pth",
+                    actor_path=this_run_episode_path + f"/actor_ts{ts}.pth",
+                    critic_path=this_run_episode_path + f"/critic_ts{ts}.pth",
                 )
 
-            env.save_csv(f"outputs/4x4/PG-4x4grid_run{epoch}", episode)
+            env.save_csv(f"outputs/4x4/PG-4x4grid_run{run}", episode)
 
     env.close()
