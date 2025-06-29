@@ -1,3 +1,4 @@
+
 import argparse
 import os
 import sys
@@ -26,7 +27,7 @@ if __name__ == "__main__":
     env = SumoEnvironment(
         net_file="sumo_rl/nets/4x4-Lucas/4x4.net.xml",
         route_file="sumo_rl/nets/4x4-Lucas/4x4c1c2c1c2.rou.xml",
-        use_gui=False,
+        use_gui=True,
         num_seconds=80000,
         reward_fn=["diff-waiting-time", "average-speed"],
         reward_weights=[1, 0.1],

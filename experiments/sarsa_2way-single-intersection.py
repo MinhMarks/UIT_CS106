@@ -47,7 +47,7 @@ if __name__ == "__main__":
         single_agent=True,
         route_file=args.route,
         out_csv_name=out_csv,
-        use_gui=args.gui,
+        use_gui= True,  #args.gui,
         num_seconds=args.seconds,
         min_green=args.min_green,
         max_green=args.max_green,
